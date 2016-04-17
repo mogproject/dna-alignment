@@ -14,7 +14,7 @@ def align_sequences(a, b):
 
     :param a: <sequence#1> (string)
     :param b: <sequence#2> (string)
-    :return: tuple of (aligned sequence#1 (string), aligned sequence#2 (string)
+    :return: tuple of (aligned sequence#1 (string), aligned sequence#2 (string))
     """
     m = len(a)
     n = len(b)

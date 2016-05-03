@@ -4,7 +4,7 @@ from __future__ import division, print_function, absolute_import, unicode_litera
 #
 # Usage:
 #     dna_alignment.py <file_path>
-#       (the first line will be considered as a standard sequence)
+#       (the first line will be considered as the standard sequence)
 #     dna_alignment.py test
 #
 

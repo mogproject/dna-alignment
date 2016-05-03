@@ -1,87 +1,163 @@
 #!/usr/bin/env python3
 from __future__ import division, print_function, absolute_import, unicode_literals
 
+#
+# Usage:
+#     dna_alignment.py <file_path>
+#       (the first line will be considered as a standard sequence)
+#     dna_alignment.py test
+#
+
 import sys
+import fileinput
 
 
 MAX_SEQUENCE_LENGTH = 150
-PADDING_CHAR = '_'
+PADDING_CHAR = '-'
 
 
-def align_sequences(a, b):
+def find_largest_common_sequence(a, b):
     """
-    Align two sequences. Results are padded with '_'
+    Find the largest continuous common sequence.
+    If there are more than one largest sequences, returns the first one.
 
     :param a: <sequence#1> (string)
     :param b: <sequence#2> (string)
-    :return: tuple of (aligned sequence#1 (string), aligned sequence#2 (string))
+    :return: tuple of (length of the common sequence, position in 'a', position in 'b')
     """
-    m = len(a)
-    n = len(b)
+    n = len(a)
+    m = len(b)
 
-    assert 1 <= m <= MAX_SEQUENCE_LENGTH, 'length of a must be between 1 and %d (actual=%d)' % (MAX_SEQUENCE_LENGTH, m)
-    assert 1 <= n <= MAX_SEQUENCE_LENGTH, 'length of b must be between 1 and %d (actual=%d)' % (MAX_SEQUENCE_LENGTH, n)
+    msg = 'length of %s must be between 0 and %d (actual=%d)'
+    assert 0 <= n <= MAX_SEQUENCE_LENGTH, msg % ('a', MAX_SEQUENCE_LENGTH, n)
+    assert 0 <= m <= MAX_SEQUENCE_LENGTH, msg % ('b', MAX_SEQUENCE_LENGTH, m)
 
     # initialize
-    memo = [[0] * (m + 1) for _ in range(n + 1)]
+    memo = [[0] * (n + 1) for _ in range(m + 1)]
 
     # fill matrix
-    for i in range(n):
-        for j in range(m):
-            s = 1 if a[j] == b[i] else 0
-            memo[i + 1][j + 1] = max(memo[i][j] + s, memo[i + 1][j], memo[i][j + 1])
+    max_common_len = 0
+    start_pos_i = 0
+    start_pos_j = 0
 
-    # traceback
-    buf_a = []
-    buf_b = []
+    for i in range(m):
+        for j in range(n):
+            common_len = (memo[i][j] + 1) if a[j] == b[i] else 0
+            if max_common_len < common_len:
+                max_common_len = common_len
+                start_pos_i = i - max_common_len + 1
+                start_pos_j = j - max_common_len + 1
+            memo[i + 1][j + 1] = common_len
 
-    i = n
-    j = m
-    while 0 < i or 0 < j:
-        if 0 < i and 0 < j and a[j - 1] == b[i - 1]:
-            i -= 1
-            j -= 1
-            buf_a.append(a[j])
-            buf_b.append(b[i])
-        elif 0 < j and memo[i][j - 1] == memo[i][j]:
-            j -= 1
-            buf_a.append(a[j])
-            buf_b.append(PADDING_CHAR)
-        elif 0 < i and memo[i - 1][j] == memo[i][j]:
-            i -= 1
-            buf_a.append(PADDING_CHAR)
-            buf_b.append(b[i])
-        else:
-            raise Exception('never happens')
+    return max_common_len, start_pos_j, start_pos_i
 
-    ret_a = ''.join(reversed(buf_a))
-    ret_b = ''.join(reversed(buf_b))
-    return ret_a, ret_b
+
+def align_sequence(standard, seq):
+    """
+    Align a sequence based on the standard string. The result is padded with '-'
+
+    :param standard: (string)
+    :param seq: <sequence#2> (string)
+    :return: aligned seq (string)
+    """
+
+    # examine the entire sequence
+    c, a, b = find_largest_common_sequence(standard, seq)
+    if c == 0:
+        return seq
+
+    # examine the former part
+    xa = standard[0:a]
+    xb = seq[0:b]
+    cx, ax, bx = find_largest_common_sequence(xa, xb)
+
+    # examine the latter part
+    ya = standard[a + c:]
+    yb = seq[b + c:]
+    cy, ay, by = find_largest_common_sequence(ya, yb)
+
+    # print('DEBUG: cx=%d, ax=%d, bx=%d, c=%d, a=%d, b=%d, cy=%d, ay=%d, by=%d' % (cx, ax, bx, c, a, b, cy, ay, by))
+
+    # padding
+    buf = []
+    if cx < cy:
+        ax, bx, cx, a, b, c = a, b, c, a + c + ay, b + c + by, cy
+
+    buf.append(seq[:bx])
+    buf.append(PADDING_CHAR * (ax - bx))
+    buf.append(seq[bx:b])
+    buf.append(PADDING_CHAR * (a - b - max(0, ax - bx)))
+    buf.append(seq[b:])
+
+    return ''.join(buf)
 
 
 def test():
     """
     Unit testing
     """
-    data = [
-        ('A', 'A', 'A', 'A'),
-        ('A', 'G', '_A', 'G_'),
-        ('A', 'GA', '_A', 'GA'),
-        ('A', 'AG', 'A_', 'AG'),
-        ('GA', 'A', 'GA', '_A'),
-        ('AG', 'A', 'AG', 'A_'),
-        ('AAAGGG', 'AAG', 'AAAGGG', '_AA__G'),
-        ('AAAGGG', 'GA', '_AAAGGG', 'G__A___'),
-        ('AAACGGG', 'AG', 'AAACGGG', '__A___G'),
-        ('GAATTCAGTTA', 'GGATCGA', '_GAATTCAGTTA', 'GG_A_TC_G__A'),
-        ('GATCACTAGCAGCAGT', 'GACTAGGAGTACACCC', 'GATCACTA_GCAG__CA___GT', 'G___ACTAGG_AGTACACCC__'),
+
+    def f(func, data):
+        for d in data:
+            sys.stdout.write('.')
+            actual = func(*d[0])
+            expected = d[1]
+            assert actual == expected, 'param: %s, actual: %s, expected: %s' % (d[0], actual, expected)
+
+    data_1 = [
+        [('AAGTTT', 'AACTTT'), (3, 3, 3)],
+        [('AAGTTT', 'AATTTC'), (3, 3, 2)],
+        [('AAGTTT', 'AACCTT'), (2, 0, 0)],
+        [('AAGTTT', 'CAATTT'), (3, 3, 3)],
+        [('AAGTTT', 'AATTGG'), (2, 0, 0)],
+        [('AAGTTT', 'AGTTTA'), (5, 1, 0)],
+
+        [('', ''), (0, 0, 0)],
+        [('', 'A'), (0, 0, 0)],
+        [('A', ''), (0, 0, 0)],
+        [('A', 'A'), (1, 0, 0)],
+        [('A', 'G'), (0, 0, 0)],
+        [('A', 'GA'), (1, 0, 1)],
+        [('A', 'AG'), (1, 0, 0)],
+        [('GA', 'A'), (1, 1, 0)],
+        [('AG', 'A'), (1, 0, 0)],
+        [('AAAGGG', 'AAG'), (3, 1, 0)],
+        [('AAAGGG', 'GA'), (1, 3, 0)],
+        [('AAACGGG', 'AG'), (1, 0, 0)],
+        [('GAATTCAGTTA', 'GGATCGA'), (2, 0, 1)],
+        [('GATCACTAGCAGCAGT', 'GACTAGGAGTACACCC'), (5, 4, 1)],
+        [('GATCACTAGCAGCAGT', 'GATCACTAGCAGCAGT'), (16, 0, 0)],
+        [('GATCACTATTTTTTTT', 'GTTTTTTTGATCACTA'), (8, 0, 8)],
+        [('GATCACTATTTTTTTT', 'TTTTTTTTGATCACTA'), (8, 8, 0)],
     ]
 
-    for d in data:
-        sys.stdout.write('.')
-        actual = align_sequences(d[0], d[1])
-        expected = d[2:]
-        assert actual == expected, 'actual: %s, expected: %s' % (actual, expected)
+    data_2 = [
+        [('AAGTTT', 'AACTTT'), 'AACTTT'],
+        [('AAGTTT', 'AATTTC'), 'AA-TTTC'],
+        [('AAGTTT', 'AACCTT'), 'AACCTT'],
+        [('AAGTTT', 'CAATTT'), 'CAATTT'],
+        [('AAGTTT', 'AATTGG'), 'AA-TTGG'],
+        [('AAGTTT', 'AGTTTA'), '-AGTTTA'],
+
+        [('A', 'A'), 'A'],
+        [('A', 'G'), 'G'],
+        [('A', 'GA'), 'GA'],
+        [('A', 'AG'), 'AG'],
+        [('GA', 'A'), '-A'],
+        [('AG', 'A'), 'A'],
+        [('AAAGGG', 'AAG'), '-AAG'],
+        [('AAAGGG', 'GA'), '---GA'],
+        [('AAACGGG', 'AG'), 'A---G'],
+        [('GAATTCAGTTA', 'GGATCGA'), 'GGA-TCGA'],
+        [('GATCACTAGCAGCAGT', 'GACTAGGAGTACACCC'), 'G---ACTAGG---AGTACACCC'],
+        [('GATCACTAGCAGCAGT', 'GATCACTAGCAGCAGT'), 'GATCACTAGCAGCAGT'],
+        [('GATCACTATTTTTTTT', 'GTTTTTTTGATCACTA'), 'GTTTTTTTGATCACTA'],
+        [('GATCACTATTTTTTTT', 'TTTTTTTTGATCACTA'), '--------TTTTTTTTGATCACTA'],
+    ]
+
+    f(find_largest_common_sequence, data_1)
+    f(align_sequence, data_2)
+
     print('\nok')
 
 
@@ -92,9 +168,15 @@ def main(args):
     :param args: command-line arguments
     :return: exit code
     """
-    ret = align_sequences(args[0], args[1])
-    print(ret[0])
-    print(ret[1])
+
+    standard = ''
+    for line in fileinput.input(args):
+        line = line.rstrip()
+        if not standard:
+            standard = line
+            print(standard)
+        else:
+            print(align_sequence(standard, line))
     return 0
 
 
@@ -102,8 +184,5 @@ if __name__ == '__main__':
     if sys.argv[1:] == ['test']:
         test()
         sys.exit(0)
-    if len(sys.argv) != 3:
-        print('usage: %s <sequence1> <sequence2>' % sys.argv[0])
-        print('       %s test' % sys.argv[0])
-        sys.exit(1)
     sys.exit(main(sys.argv[1:]))
+
